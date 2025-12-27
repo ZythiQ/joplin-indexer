@@ -43,10 +43,10 @@ JoplinClient.reset_discovery()
 ### Basic requests
 
 ```python
-note = client.get("notes/NOTE_ID")			# GET
-created = client.post("notes", {"title": "X"})		# POST
-updated = client.put("notes/NOTE_ID", {"title": "Y"})	# PUT
-client.delete("notes/NOTE_ID")				# DELETE
+note = client.get("notes/NOTE_ID")
+created = client.post("notes", {"title": "X"})
+updated = client.put("notes/NOTE_ID", {"title": "Y"})
+client.delete("notes/NOTE_ID")
 ```
 
 ---
