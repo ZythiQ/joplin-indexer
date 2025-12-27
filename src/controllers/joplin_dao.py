@@ -1,421 +1,392 @@
 from models.joplin_data import JNote, JFolder, JTag
 from controllers.joplin_client import JoplinClient
 
-from typing import List, Optional, Dict, Set, Literal
-from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Set, Literal, Union, Callable, cast
+from functools import wraps
 
 
 class JoplinDAO:
     """
-    Joplin data access object.
+    Joplin data access object with lazy caching and minimal code footprint.
     """
     
     EntityType = Literal['note', 'folder', 'tag']
+
+    @staticmethod
+    def _ensure_loaded(entity_type: str):
+        """
+        Decorator to ensure entity type is loaded before accessing the cache.
+        """
+        def decorator(func: Callable) -> Callable:
+            @wraps(func)
+            def wrapper(self, *args, **kwargs):
+                load_method = f'_ensure_{entity_type}_loaded'
+                if hasattr(self, load_method):
+                    getattr(self, load_method)()
+                return func(self, *args, **kwargs)
+            return wrapper
+        return decorator
+    
     
     def __init__(self, token: str, base_url: Optional[str] = None):
         """
         Initialize the DAO.
         """
         self._api = JoplinClient(token, base_url)
+        self._loaded: Set[str] = set()
 
-        self._notes_by_folder: Dict[str, Set[str]] = {}
-        self._notes_by_tag: Dict[str, Set[str]] = {}
-        
-        self._folder_cache: Dict[str, Dict] = {}
-        self._note_cache: Dict[str, Dict] = {}
-        self._tag_cache: Dict[str, Dict] = {}
-        
-        self._cache_ttl = timedelta(minutes=5)
-        self._cache_timestamp = None
-
-        self._cache_config = {
-            'note': {
-                'cache': self._note_cache,
-                'fields': ['id', 'title', 'parent_id', 'updated_time', 'is_todo']
-            },
-            'folder': {
-                'cache': self._folder_cache,
-                'fields': ['id', 'title', 'parent_id']
-            },
-            'tag': {
-                'cache': self._tag_cache,
-                'fields': ['id', 'title']
-            }
+        self._folders: Dict[str, JFolder] = {}
+        self._notes: Dict[str, JNote] = {}
+        self._tags: Dict[str, JTag] = {}
+               
+        self._config = {
+            'note': (self._notes, JNote, 'notes', ['id', 'title', 'parent_id', 'updated_time', 'is_todo']),
+            'folder': (self._folders, JFolder, 'folders', ['id', 'title', 'parent_id']),
+            'tag': (self._tags, JTag, 'tags', ['id', 'title'])
         }
 
 
-    def _dict_to_note(self, data: Dict) -> JNote:
-        return JNote(**{k: v for k, v in data.items()
-                        if k in JNote.__annotations__})
-    
-
-    def _dict_to_folder(self, data: Dict) -> JFolder:
-        return JFolder(**{k: v for k, v in data.items()
-                          if k in JFolder.__annotations__})
-    
-
-    def _dict_to_tag(self, data: Dict) -> JTag:
-        return JTag(**{k: v for k, v in data.items()
-                       if k in JTag.__annotations__})
-    
-
-    def _rebuild_cache(self):
+    def _get_config(self, entity_type: EntityType):
         """
-        Rebuild lightweight cache from API.
+        Get cache, class, endpoint, and fields for an entity type.
         """
-        notes = self._api.get_paginated('notes', fields=self._cache_config['note']['fields'])
-        self._note_cache.clear()
+        return self._config[entity_type]
 
-        self._note_cache.update({n['id']: n for n in notes})
-        self._notes_by_folder.clear()
 
-        for note in notes:
-            parent = note.get('parent_id', '')
+    def _to_entity(self, entity_type: EntityType, data: Dict) -> Union[JNote, JFolder, JTag]:
+        """
+        Convert a dict to dataclass, filtering valid fields.
+        """
+        _, entity_class, _, _ = self._get_config(entity_type)
+        return entity_class(**{k: v for k, v in data.items() if k in entity_class.__annotations__})
 
-            if parent: 
-                self._notes_by_folder.setdefault(parent, set()).add(note['id'])
+
+    def _cache_entity(self, entity_type: EntityType, data: Dict) -> Union[JNote, JFolder, JTag]:
+        """
+        Cache and return an entity.
+        """
+        entity = self._to_entity(entity_type, data)
+        cache, _, _, _ = self._get_config(entity_type)
+        cache[entity.id] = entity
+        return entity
+
+
+    def _bulk_fetch(self, entity_type: EntityType, endpoint: Optional[str] = None, fields: Optional[List[str]] = None):
+        """
+        Bulk fetch and cache entities.
+        """
+        _, _, default_endpoint, default_fields = self._get_config(entity_type)
+        endpoint = endpoint or default_endpoint
+        fields = fields or default_fields
         
-        # Folders:
-        folders = self._api.get_paginated('folders', fields=self._cache_config['folder']['fields'])
-        self._folder_cache.clear()
+        items = self._api.get_paginated(endpoint, fields=fields)
 
-        self._folder_cache.update({f['id']: f for f in folders})
-        
-        # Tags:
-        tags = self._api.get_paginated('tags', fields=self._cache_config['tag']['fields'])
-        self._tag_cache.clear()
-
-        self._tag_cache.update({t['id']: t for t in tags})
-        self._notes_by_tag.clear()
-
-        for tag_id in self._tag_cache:
-            note_items = self._api.get_paginated(f'tags/{tag_id}/notes', fields=['id'])
-            self._notes_by_tag[tag_id] = {n['id'] for n in note_items}
-        
-        self._cache_timestamp = datetime.now()
-
-
-    def _freshen_cache(self):
-        """
-        Lazy-load cache only when needed with TTL.
-        """
-        now = datetime.now()
-        
-        if (self._cache_timestamp is None or 
-            now - self._cache_timestamp > self._cache_ttl):
-            self._rebuild_cache()
-
-
-    def _invalidate_cache(self):
-        """
-        Force cache refresh on next access.
-        """
-        self._cache_timestamp = None
-
-
-    def _update_cache(self, entity_type: 'JoplinDAO.EntityType', entity_id: str, data: Optional[Dict] = None):
-        """
-        Generic method to add/update/remove an entity in cache.
-        If data is None, removes the entity. Otherwise, adds/updates it.
-        """
-        if self._cache_timestamp is None:
-            return
-        
-        config = self._cache_config[entity_type]
-
-        if data is None:
-            entity = config['cache'].pop(entity_id, None)
-
-            if entity_type == 'note' and entity:
-                pid = entity.get('parent_id', '')
-
-                if pid and pid in self._notes_by_folder:
-                    self._notes_by_folder[pid].discard(entity_id)
-
-                for tag_notes in self._notes_by_tag.values():
-                    tag_notes.discard(entity_id)
-
-            elif entity_type == 'tag':
-                self._notes_by_tag.pop(entity_id, None)
-        
-        else:
-            cached_data = {k: data.get(k, '') for k in config['fields']}
-            config['cache'][entity_id] = cached_data
-            
-            if entity_type == 'note':
-                pid = data.get('parent_id', '')
-                
-                if pid:
-                    self._notes_by_folder.setdefault(pid, set()).add(entity_id)
-
-
-    def refresh_cache(self):
-        """
-        Manually refresh cache.
-        """
-        self._rebuild_cache()
+        for item in items:
+            self._cache_entity(entity_type, item)
 
     
-    def get_folder(self, folder_id: str, fields: List[str] | None = None) -> JFolder:
+    def _ensure_folders_loaded(self):
+        """
+        Lazy-load all folders.
+        """
+        if 'folders' not in self._loaded:
+            self._bulk_fetch('folder')
+            self._loaded.add('folders')
+
+
+    def _ensure_notes_loaded(self, folder_id: str):
+        """
+        Lazy-load all notes for a folder.
+        """
+        scope = f'folder:{folder_id}'
+        if scope not in self._loaded:
+            self._bulk_fetch('note', f'folders/{folder_id}/notes')
+            self._loaded.add(scope)
+
+
+    def _ensure_tags_loaded(self):
+        """
+        Lazy-load all tags.
+        """
+        if 'tags' not in self._loaded:
+            self._bulk_fetch('tag')
+            self._loaded.add('tags')
+
+
+    def _get(self, entity_type: EntityType, entity_id: str, 
+             fields: Optional[List[str]] = None) -> Union[JNote, JFolder, JTag]:
+        """
+        Generic get operation.
+        """
+        cache, _, endpoint, _ = self._get_config(entity_type)
+        
+        if not fields and entity_id in cache:
+            return cache[entity_id]
+        
+        params = {'fields': ','.join(fields)} if fields else {}
+        data = self._api.get(f'{endpoint}/{entity_id}', **params)
+        return self._cache_entity(entity_type, data)
+
+
+    def _create(self, entity_type: EntityType, data: Dict) -> Union[JNote, JFolder, JTag]:
+        """
+        Generic create operation.
+        """
+        _, _, endpoint, _ = self._get_config(entity_type)
+        result = self._api.post(endpoint, data)
+        return self._cache_entity(entity_type, result)
+
+
+    def _update(self, entity_type: EntityType, entity_id: str, **fields) -> Union[JNote, JFolder, JTag]:
+        """
+        Generic update operation.
+        """
+        _, _, endpoint, _ = self._get_config(entity_type)
+        result = self._api.put(f'{endpoint}/{entity_id}', fields)
+        return self._cache_entity(entity_type, result)
+
+
+    def _delete(self, entity_type: EntityType, entity_id: str):
+        """
+        Generic delete operation.
+        """
+        _, _, endpoint, _ = self._get_config(entity_type)
+        self._api.delete(f'{endpoint}/{entity_id}')
+
+        cache, _, _, _ = self._get_config(entity_type)
+        cache.pop(entity_id, None)
+
+        if entity_type == 'folder':
+            removed_ids = [nid for nid, n in self._notes.items() if n.parent_id == entity_id]
+
+            for nid in removed_ids:
+                self._notes.pop(nid, None)
+
+        elif entity_type == 'tag':
+            for note in self._notes.values():
+                note.tags = [t for t in note.tags if t.id != entity_id]
+
+
+    def clear_cache(self):
+        """
+        Clear all caches.
+        """
+        self._notes.clear()
+        self._folders.clear()
+        self._tags.clear()
+        self._loaded.clear()
+
+
+    def get_folder(self, folder_id: str, fields: Optional[List[str]] = None) -> JFolder:
         """
         Get a folder with optional field selection.
         """
-        params = {'fields': ','.join(fields)} if fields else {}
-        data = self._api.get(f'folders/{folder_id}', **params)
-        return self._dict_to_folder(data)
-    
+        return cast(JFolder, self._get('folder', folder_id, fields))
 
-    def list_folders(self, parent_id: Optional[str] = None, root_only: bool = False) -> List[Dict]:
+
+    @_ensure_loaded('folders')
+    def list_folders(self, parent_id: Optional[str] = None, root_only: bool = False) -> List[JFolder]:
         """
-        List folders (id, title, parent_id).
+        List folders with optional filtering by parent or root only.
         """
-        self._freshen_cache()
-        folders = list(self._folder_cache.values())
+        folders = list(self._folders.values())
         
         if root_only:
-            folders = [f for f in folders if not f['parent_id']]
-
-        elif parent_id is not None:
-            folders = [f for f in folders if f['parent_id'] == parent_id]
-
+            return [f for f in folders if not f.parent_id]
+        
+        if parent_id is not None:
+            return [f for f in folders if f.parent_id == parent_id]
+        
         return folders
-    
 
+
+    @_ensure_loaded('folders')
     def get_folder_path(self, folder_id: str) -> str:
         """
-        Get full folder path ('Work/Projects/Client A').
+        Get full folder path by traversing tree structure.
         """
-        self._freshen_cache()
-        
-        path_parts = []
+        path = []
         cid = folder_id
         
-        while cid:
-            folder = self._folder_cache.get(cid)
-            if not folder: break
+        while cid and cid in self._folders:
+            path.insert(0, self._folders[cid].title)
+            cid = self._folders[cid].parent_id
 
-            path_parts.insert(0, folder['title'])
-            cid = folder['parent_id']
+        return '/'.join(path)
 
-        return '/'.join(path_parts)
-    
 
     def create_folder(self, title: str, parent_id: str = '') -> JFolder:
         """
         Create a new folder.
         """
-        data = self._api.post('folders', {'title': title, 'parent_id': parent_id})
-        folder = self._dict_to_folder(data)
-        self._update_cache('folder', data['id'], data)
-        return folder
-    
+        return cast(JFolder, self._create('folder', {'title': title, 'parent_id': parent_id}))
+
 
     def update_folder(self, folder_id: str, **fields) -> JFolder:
         """
         Update folder fields.
         """
-        result = self._api.put(f'folders/{folder_id}', fields)
-        folder = self._dict_to_folder(result)
-        self._update_cache('folder', result['id'], result)
-        return folder
+        return cast(JFolder, self._update('folder', folder_id, **fields))
 
 
-    def delete_folder(self, folder_id: str) -> None:
+    def delete_folder(self, folder_id: str):
         """
-        Delete a folder.
+        Delete a folder and all its notes.
         """
-        self._api.delete(f'folders/{folder_id}')
-        self._update_cache('folder', folder_id)
+        self._delete('folder', folder_id)
 
-    
-    def get_note(self, note_id: str, fields: List[str] | None = None) -> JNote:
+
+    def get_note(self, note_id: str, fields: Optional[List[str]] = None) -> JNote:
         """
         Get a note with optional field selection.
         """
-        params = {'fields': ','.join(fields)} if fields else {}
-        data = self._api.get(f'notes/{note_id}', **params)
-        return self._dict_to_note(data)
-    
+        return cast(JNote, self._get('note', note_id, fields))
 
-    def list_notes(self, folder_id: Optional[str] = None, tag_id: Optional[str] = None, todo_only: bool = False) -> List[Dict]:
+
+    def list_notes(self, folder_id: Optional[str] = None, tag_id: Optional[str] = None, todo_only: bool = False) -> List[JNote]:
         """
-        List notes (id, title, parent_id, timestamps).
+        List notes with optional filtering by folder, tag, or todo status.
         """
-        self._freshen_cache()
-        
         if folder_id:
-            note_ids = self._notes_by_folder.get(folder_id, set())
-            notes = [self._note_cache[nid] for nid in note_ids]
+            self._ensure_notes_loaded(folder_id)
+            notes = [n for n in self._notes.values() if n.parent_id == folder_id]
+
         elif tag_id:
-            note_ids = self._notes_by_tag.get(tag_id, set())
-            notes = [self._note_cache[nid] for nid in note_ids]
+            tag = cast(JTag, self._get('tag', tag_id))
+
+            if (scope := f'tag:{tag_id}') not in self._loaded:
+                for item in self._api.get_paginated(f'tags/{tag_id}/notes',
+                    fields=['id', 'title', 'parent_id', 'updated_time', 'is_todo']
+                ):
+                    note = cast(JNote, self._cache_entity('note', item))
+                    
+                    if not any(t.id == tag_id for t in note.tags):
+                        note.tags.append(tag)
+
+                self._loaded.add(scope)
+
+            notes = [n for n in self._notes.values() if any(t.id == tag_id for t in n.tags)]
+
         else:
-            notes = list(self._note_cache.values())
+            self._bulk_fetch('note')
+            notes = list(self._notes.values())
         
-        if todo_only:
-            notes = [n for n in notes if n.get('is_todo')]
-        
-        return notes
-    
+        return [n for n in notes if n.is_todo] if todo_only else notes
 
-    def search_notes(self, query: str, use_cache: bool = True) -> List[Dict]:
+
+    def search_notes(self, query: str) -> List[JNote]:
         """
-        Search notes by title/body.
+        Search notes by title or body content.
         """
-        params = {'query': query, 'type': 'note', 'fields': 'id,title,parent_id'}
-        result = self._api.get('search', **params)
-        api_results = result.get('items', [])
-        cache_results = []
-        
-        if not use_cache:
-            return api_results
-        
-        self._freshen_cache()
+        result = self._api.get('search', query=query, type='note', fields='id,title,parent_id')
+        return [cast(JNote, self._cache_entity('note', item)) for item in result.get('items', [])]
 
-        for note_dict in self._note_cache.values():
-            title = note_dict.get('title', '').lower()
-
-            if query.lower() in title:
-                if not any(r['id'] == note_dict['id'] for r in api_results):
-                    cache_results.append({
-                        'id': note_dict['id'],
-                        'title': note_dict.get('title', ''),
-                        'parent_id': note_dict.get('parent_id', '')
-                    })
-        
-        return api_results + cache_results
-    
 
     def create_note(self, title: str, body: str = '', folder_id: str = '', **kwargs) -> JNote:
         """
         Create a new note.
         """
         data = {'title': title, 'body': body, 'parent_id': folder_id, **kwargs}
-        result = self._api.post('notes', data)
-        note = self._dict_to_note(result)
+        return cast(JNote, self._create('note', data))
 
-        self._update_cache('note', result['id'], result)
-        return note
-    
 
     def update_note(self, note_id: str, **fields) -> JNote:
         """
         Update note fields.
         """
-        result = self._api.put(f'notes/{note_id}', fields)
-        note = self._dict_to_note(result)
+        return cast(JNote, self._update('note', note_id, **fields))
 
-        self._update_cache('note', result['id'], result)
-        return note
-    
-    
-    def move_notes(self, note_ids: List[str], target_folder_id: str) -> int:
-        """
-        Bulk move notes to folder and return the count.
-        """
-        moved_count = 0
-        
-        for note_id in note_ids:
-            try:
-                result = self._api.put(f'notes/{note_id}', {'parent_id': target_folder_id})
-                self._update_cache('note', result['id'], result)
-                moved_count += 1
 
-            except Exception:
-                continue
-        
-        return moved_count
-    
-
-    def delete_note(self, note_id: str) -> None:
+    def delete_note(self, note_id: str):
         """
         Delete a note.
         """
-        self._api.delete(f'notes/{note_id}')
-        self._update_cache('note', note_id)
+        self._delete('note', note_id)
 
-    
+
+    def move_notes(self, note_ids: List[str], target_folder_id: str) -> int:
+        """
+        Move notes to a target folder and return the count of moved notes.
+        """
+        moved = 0
+        for note_id in note_ids:
+            try:
+                self.update_note(note_id, parent_id=target_folder_id)
+                moved += 1
+            except Exception:
+                continue
+        return moved
+
+
     def get_tag(self, tag_id: str) -> JTag:
         """
-        Get a tag.
+        Get a tag by ID.
         """
-        data = self._api.get(f'tags/{tag_id}')
-        return self._dict_to_tag(data)
-    
+        return cast(JTag, self._get('tag', tag_id))
 
-    def list_tags(self) -> List[Dict]:
+
+    @_ensure_loaded('tags')
+    def list_tags(self) -> List[JTag]:
         """
         List all tags.
         """
-        self._freshen_cache()
-        return list(self._tag_cache.values())
-    
+        return list(self._tags.values())
+
 
     def create_tag(self, title: str) -> JTag:
         """
         Create a new tag.
         """
-        data = self._api.post('tags', {'title': title})
-        tag = self._dict_to_tag(data)
+        return cast(JTag, self._create('tag', {'title': title}))
 
-        self._update_cache('tag', data['id'], data)
-        return tag
-    
 
     def update_tag(self, tag_id: str, **fields) -> JTag:
         """
         Update tag fields.
         """
-        result = self._api.put(f'tags/{tag_id}', fields)
-        tag = self._dict_to_tag(result)
-
-        self._update_cache('tag', result['id'], result)
-        return tag
+        return cast(JTag, self._update('tag', tag_id, **fields))
 
 
-    def delete_tag(self, tag_id: str) -> None:
+    def delete_tag(self, tag_id: str):
         """
         Delete a tag.
         """
-        self._api.delete(f'tags/{tag_id}')
-        self._update_cache('tag', tag_id)
+        self._delete('tag', tag_id)
 
-    
-    def get_note_tags(self, note_id: str) -> List[Dict]:
+
+    def get_note_tags(self, note_id: str) -> List[JTag]:
         """
-        Get tags for a note.
+        Get all tags associated with a note.
         """
         items = self._api.get_paginated(f'notes/{note_id}/tags', fields=['id', 'title'])
-        return items
-    
+        tags = [cast(JTag, self._cache_entity('tag', item)) for item in items]
 
-    def get_notes_with_tag(self, tag_id: str) -> List[Dict]:
-        """
-        Get notes with a tag.
-        """
-        self._freshen_cache()
-        note_ids = self._notes_by_tag.get(tag_id, set())
-        return [self._note_cache[nid] for nid in note_ids]
-    
+        if note_id in self._notes:
+            self._notes[note_id].tags = tags
 
-    def tag_note(self, note_id: str, tag_id: str) -> None:
+        return tags
+
+
+    def tag_note(self, note_id: str, tag_id: str):
         """
         Add a tag to a note.
         """
         self._api.post(f'tags/{tag_id}/notes', {'id': note_id})
         
-        if self._cache_timestamp:
-            if tag_id not in self._notes_by_tag:
-                self._notes_by_tag[tag_id] = set()
-                
-            self._notes_by_tag[tag_id].add(note_id)
+        if note_id in self._notes:
+            note = self._notes[note_id]
 
-    
-    def untag_note(self, note_id: str, tag_id: str) -> None:
+            if not any(t.id == tag_id for t in note.tags):
+                note.tags.append(cast(JTag, self._get('tag', tag_id)))
+
+
+
+    def untag_note(self, note_id: str, tag_id: str):
         """
         Remove a tag from a note.
         """
         self._api.delete(f'tags/{tag_id}/notes/{note_id}')
         
-        if self._cache_timestamp and tag_id in self._notes_by_tag:
-            self._notes_by_tag[tag_id].discard(note_id)
+        if note_id in self._notes:
+            note = self._notes[note_id]
+            note.tags = [t for t in note.tags if t.id != tag_id]

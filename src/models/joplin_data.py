@@ -31,6 +31,7 @@ class JNote:
     author: str = ''
     source_url: str = ''
     markup_language: int = 1
+    tags: List['JTag'] = field(default_factory=list)
 
 
 @dataclass

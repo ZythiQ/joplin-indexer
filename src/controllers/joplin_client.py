@@ -34,6 +34,8 @@ class JoplinClient:
         self.session = requests.Session()
         
         self.base_url = base_url if base_url else self._discover_port()
+        self._warmup()
+        
         self._initialized = True
     
 
@@ -85,6 +87,15 @@ class JoplinClient:
         
         except Exception as e:
             raise JoplinAPIError(f"Request failed: {e}")
+        
+    
+    def _warmup(self) -> None:
+        """
+        Warm up the session and validate authentication.
+        """
+        try: self._request("GET", "notes", params={"limit": 1})
+        except JoplinAPIError: raise
+        except Exception: pass
         
 
     @classmethod
