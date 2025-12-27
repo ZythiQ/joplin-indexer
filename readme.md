@@ -174,6 +174,45 @@ new_markdown_text = dom.get_document()
 * Restrict to descendants of a container (`where_container`).
 * Filter by node type (`where_type`), e.g. `node` vs `container`.
 
+### Render the tree after deserializing
+
+```python
+dom = JMLDOM()
+dom.set_document(markdown)
+print(repr(dom))
+```
+
+#### Example Output
+
+```powershell
+root/
+├── [C] c_b3e18bcd {'author': 'John'}
+│   ├── (N) n_82dcc4d8 [13 chars: "--- ## [John]"]
+│   ├── [C] c_66ff3471 {'type': 'shorts', 'author': 'John'}
+│   │   ├── (N) n_77050bff [16 chars: "--- ### [Shorts]"]
+│   │   ├── (N) n_3eb8ad5e {'type': 'summary', 'author': 'John', 'kind': 'short'} [204 chars: "#### **Deep Sea Post..."]
+│   │   ├── (N) n_54e94cef {'type': 'summary', 'author': 'John', 'kind': 'short'} [188 chars: "#### **Borrowed Grav..."]
+│   │   └── (N) n_5fa1c395 {'type': 'summary', 'author': 'John', 'kind': 'short'} [177 chars: "#### **The Quiet Sta..."]
+│   │   
+│   └── [C] c_032fb238 {'type': 'series', 'author': 'John'}
+│       ├── (N) n_10b88dee [16 chars: "--- ### [Series]"]
+│       ├── (N) n_b9664b68 {'type': 'summary', 'author': 'John', 'kind': 'series'} [218 chars: "#### **Lantern Distr..."]
+│       └── (N) n_fda63c3a {'type': 'summary', 'author': 'John', 'kind': 'series'} [179 chars: "#### **Midnight Tran..."]
+│   
+└── [C] c_384a733a {'author': 'Hasmov'}
+    ├── (N) n_6bac7e3b [13 chars: "--- ## [Hasmov]"]
+    ├── [C] c_5a9aefee {'type': 'shorts', 'author': 'Hasmov'}
+    │   ├── (N) n_324f2694 [16 chars: "--- ### [Shorts]"]
+    │   ├── (N) n_55879353 {'type': 'summary', 'author': 'Hasmov', 'kind': 'short'} [207 chars: "#### **Echo Orchard*..."]
+    │   └── (N) n_ddfd3094 {'type': 'summary', 'author': 'Hasmov', 'kind': 'short'} [170 chars: "#### **Spare Teeth**..."]
+    │   
+    └── [C] c_b46ad5be {'type': 'series', 'author': 'Hasmov'}
+        ├── (N) n_497e5cb3 [16 chars: "--- ### [Series]"]
+        ├── (N) n_f9ef0b5d {'type': 'summary', 'author': 'Hasmov', 'kind': 'series'} [202 chars: "#### **Salt & Thunde..."]
+        ├── (N) n_edfdaf66 {'type': 'summary', 'author': 'Hasmov', 'kind': 'series'} [186 chars: "#### **Glass Rivers*..."]
+        └── (N) n_8860a513 {'type': 'summary', 'author': 'Hasmov', 'kind': 'series'} [173 chars: "#### **Ash Choir** \..."]
+```
+
 ---
 
 ## Errors (quick reference)

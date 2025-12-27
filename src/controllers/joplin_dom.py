@@ -12,15 +12,15 @@ class JMLDoc:
     """
 
     _TAG_NODE = 'node'
-    _TAG_CONTAINER = 'container'
+    _TAG_IMPTAINER = 'container'
 
     _ATTRIBUTE_RE = re.compile(r'(\w+)="([^"]*)"')
 
     _NODE_RE = re.compile(rf'<!-- {_TAG_NODE} id="([^"]+)"(.*?)-->')
     _NODE_END_RE = re.compile(rf'<!-- /{_TAG_NODE} -->')
 
-    _CONTAINER_RE = re.compile(rf'<!-- {_TAG_CONTAINER} id="([^"]+)"(.*?)-->')
-    _CONTAINER_END_RE = re.compile(rf'<!-- /{_TAG_CONTAINER} -->')
+    _IMPTAINER_RE = re.compile(rf'<!-- {_TAG_IMPTAINER} id="([^"]+)"(.*?)-->')
+    _IMPTAINER_END_RE = re.compile(rf'<!-- /{_TAG_IMPTAINER} -->')
 
 
     def __init__(self, markdown: str):
@@ -119,7 +119,7 @@ class JMLDoc:
         
         # Find root:
         for i, line in enumerate(lines):
-            if match := self._CONTAINER_RE.match(line):
+            if match := self._IMPTAINER_RE.match(line):
                 if match.group(1) == 'root':
                     seen_root = True
                     root_start = i
@@ -130,7 +130,7 @@ class JMLDoc:
         
         # Container opening:
         for i, line in enumerate(lines):
-            if match := self._CONTAINER_RE.match(line):
+            if match := self._IMPTAINER_RE.match(line):
                 cid = match.group(1)
                 attrs_str = match.group(2).strip()
                 attrs = self._deserialize_attributes(attrs_str)
@@ -144,7 +144,7 @@ class JMLDoc:
                     in_root = True
 
                 else:
-                    container = JMLNode(id=cid, type=self._TAG_CONTAINER, content='', attributes=attrs)
+                    container = JMLNode(id=cid, type=self._TAG_IMPTAINER, content='', attributes=attrs)
                     stack[-1].children.append(container)
                     container.parent = stack[-1]
                     self._idx[cid] = container
@@ -177,7 +177,7 @@ class JMLDoc:
                 continue
 
             # Container closing:
-            if self._CONTAINER_END_RE.match(line):
+            if self._IMPTAINER_END_RE.match(line):
                 if loose_md:
                     self._wrap_content(stack[-1], loose_md)
                     loose_md = []
@@ -214,11 +214,11 @@ class JMLDoc:
         """
         if node.id == 'root':
             attrs = ' '.join(f'{k}="{v}"' for k, v in node.attributes.items())
-            lines.append(f'<!-- {self._TAG_CONTAINER} id="{node.id}" {attrs} -->')
+            lines.append(f'<!-- {self._TAG_IMPTAINER} id="{node.id}" {attrs} -->')
 
         elif node.type == 'container':
             attrs = ' '.join(f'{k}="{v}"' for k, v in node.attributes.items())
-            lines.append(f'<!-- {self._TAG_CONTAINER} id="{node.id}" {attrs} -->')
+            lines.append(f'<!-- {self._TAG_IMPTAINER} id="{node.id}" {attrs} -->')
 
         else:
             attrs = ' '.join(f'{k}="{v}"' for k, v in node.attributes.items())
@@ -229,7 +229,7 @@ class JMLDoc:
 
         for child in node.children:
             self._serialize_node(child, lines, depth + 1)
-        lines.append(f'<!-- /{self._TAG_CONTAINER} -->')
+        lines.append(f'<!-- /{self._TAG_IMPTAINER} -->')
 
 
     def serialize(self) -> str:
@@ -442,6 +442,55 @@ class JMLDoc:
         if not (parent := self._idx.get(parent_id)):
             raise JMLNodeNotFoundError(f"Parent {parent_id} not found")
         parent.children.sort(key=key_func)
+
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the JML tree.
+        """
+        lines = []
+
+        IMPT = '\x1b[36m'
+        INFO = '\033[90m'
+        RESET = '\033[0m'
+        
+        def _build_tree(node: JMLNode, prefix: str = "", is_last: bool = True):
+            if node.id == 'root': 
+                lines.append(f"{IMPT}root/{RESET}")
+            else:
+                content = ""
+                connector = "└── " if is_last else "├── "
+                attrs = f" {node.attributes}" if node.attributes else ""
+                
+                if node.type == 'container':
+                    node_type = f"{IMPT}[C]{RESET}"
+                    node_id = f"{IMPT}{node.id}{RESET}"
+                    attrs = f"{IMPT}{attrs}{RESET}" if attrs else ""
+                    lines.append(f"{prefix}{connector}{node_type} {node_id}{attrs}")
+
+                else:
+                    node_type = "(N)"
+                    
+                    if node.content:
+                        snippet = node.content[:20].replace('\n', ' ')
+                        if len(node.content) > 20: 
+                            snippet += "..."
+                        content = f" {INFO}[{len(node.content)} chars: \"{snippet}\"]{RESET}"
+                    
+                    lines.append(f"{prefix}{connector}{node_type} {node.id}{attrs}{content}")
+            
+            if node.children:
+                if node.id == 'root': new_prefix = ""
+                else: new_prefix = prefix + ("    " if is_last else "│   ")
+                
+                for i, child in enumerate(node.children):
+                    _build_tree(child, new_prefix, i == len(node.children) - 1)
+                    
+                    if child.type == 'container' and i < len(node.children) - 1:
+                        lines.append(new_prefix + "│   " + "\u200b")
+        
+        _build_tree(self._root)
+        return "\n".join(lines)
 
 
 class JMLDOM:
@@ -803,3 +852,13 @@ class JMLDOM:
         """
         for id in self._results: func(id)
         return self
+    
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation.
+        """
+        if self._jml is None:
+            return "JMLDOM(no document loaded)"
+        
+        return repr(self._jml)
