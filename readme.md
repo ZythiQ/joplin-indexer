@@ -108,7 +108,7 @@ Joplin Markup Language is embedded in markdown using HTML-style comments with tw
 * containers: `<!-- container id="..." ... --> ... <!-- /container -->`
 * nodes: `<!-- node id="..." ... --> ... <!-- /node -->`
 
-Attributes are parsed from `key="value"` pairs.
+Attributes are parsed from `key="value"` pairs. Malformed JML will be autofixed during deserialization. This will remove empty nodes, wrap loose markdown content, and move all nodes into a root container.
 
 ### Example JML document
 
