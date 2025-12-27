@@ -39,7 +39,56 @@ class JMLDoc:
         while True:
             new_id = f"{prefix or 'x'}_{secrets.token_hex(4)}"
             if new_id not in self._idx: return new_id
+    
 
+    def _is_empty(self, content: str) -> bool:
+        """
+        Check if content is empty (only whitespace).
+        """
+        return not content or content.strip() == ''
+
+
+    def _wrap_content(self, parent: JMLNode, content: List[str]) -> None:
+        """
+        Wrap accumulated loose content in a new node and add to the parent.
+        """
+        if not content:
+            return
+        
+        content_str = '\n'.join(content).strip()
+        if not self._is_empty(content_str):
+            node = JMLNode(id := self._create_id('n'), type='node', content=content_str, attributes={})
+            parent.children.append(node)
+
+            node.parent = parent
+            self._idx[id] = node
+
+
+    def _prune_nodes(self, node: JMLNode) -> bool:
+        """
+        Recursively check for empty nodes and containers from the bottom-up.
+        """
+        children_to_remove = []
+
+        for child in node.children:
+            if self._prune_nodes(child):
+                children_to_remove.append(child)
+        
+        for child in children_to_remove:
+            node.children.remove(child)
+
+            if child.id in self._idx:
+                del self._idx[child.id]
+        
+        if node.id == 'root':
+            return False
+        
+        if node.type == 'node':
+            return self._is_empty(node.content)
+        
+        else:
+            return len(node.children) == 0
+        
 
     def _deserialize_attributes(self, attrs_str: str) -> Dict[str, Any]:
         """
@@ -58,59 +107,105 @@ class JMLDoc:
 
     def _deserialize(self, markdown: str) -> None:
         """
-        Parse markdown to JMLDoc.
+        Parse markdown to JMLTree fixing any malformed JML.
         """
         lines = markdown.split('\n')
-        stack = [self._root]
-        content = []
-        nid = None
+        loose_md = []
+        node_md = []
 
-        for line in lines:
-            # Container opening:
+        seen_root = False
+        root_start = -1
+        cid = None
+        
+        # Find root:
+        for i, line in enumerate(lines):
+            if match := self._CONTAINER_RE.match(line):
+                if match.group(1) == 'root':
+                    seen_root = True
+                    root_start = i
+                    break
+        
+        in_root = seen_root and root_start == 0
+        stack = [self._root]
+        
+        # Container opening:
+        for i, line in enumerate(lines):
             if match := self._CONTAINER_RE.match(line):
                 cid = match.group(1)
                 attrs_str = match.group(2).strip()
                 attrs = self._deserialize_attributes(attrs_str)
 
-                if cid != 'root':
+                if loose_md:
+                    self._wrap_content(stack[-1], loose_md)
+                    loose_md = []
+
+                if cid == 'root':
+                    self._root.attributes.update(attrs)
+                    in_root = True
+
+                else:
                     container = JMLNode(id=cid, type=self._TAG_CONTAINER, content='', attributes=attrs)
                     stack[-1].children.append(container)
                     container.parent = stack[-1]
                     self._idx[cid] = container
                     stack.append(container)
-
-                else:
-                    self._root.attributes.update(attrs)
                 continue
 
             # Node opening:
             if match := self._NODE_RE.match(line):
-                nid = match.group(1)
-                attrs_str = match.group(2).strip()
-                attrs = self._deserialize_attributes(attrs_str)
-                content = []
+                if loose_md:
+                    self._wrap_content(stack[-1], loose_md)
+                    loose_md = []
+                
+                attrs = self._deserialize_attributes(match.group(2).strip())
+                cid = match.group(1)
+                node_md = []
 
-                node = JMLNode(id=nid, type=self._TAG_NODE, content='', attributes=attrs)
+                node = JMLNode(id=cid, type=self._TAG_NODE, content='', attributes=attrs)
                 stack[-1].children.append(node)
                 node.parent = stack[-1]
-                self._idx[nid] = node
+
+                self._idx[cid] = node
                 continue
 
             # Node closing:
             if self._NODE_END_RE.match(line):
-                if nid:
-                    self._idx[nid].content = '\n'.join(content).strip()
-                    content = []
-                    nid = None
+                if cid:
+                    self._idx[cid].content = '\n'.join(node_md).strip()
+                    node_md = []
+                    cid = None
                 continue
 
             # Container closing:
             if self._CONTAINER_END_RE.match(line):
+                if loose_md:
+                    self._wrap_content(stack[-1], loose_md)
+                    loose_md = []
+                
                 if len(stack) > 1: stack.pop()
+
+                elif stack[-1].id == 'root':
+                    in_root = False
                 continue
 
-            # Content:
-            if nid: content.append(line)
+            # Content pass:
+            if cid is not None:
+                node_md.append(line)
+
+            elif in_root or not seen_root:
+                loose_md.append(line)
+
+            else:
+                loose_md.append(line)
+        
+        # Final fix:
+        if loose_md:
+            self._wrap_content(self._root, loose_md)
+        
+        if cid and node_md:
+            self._idx[cid].content = '\n'.join(node_md).strip()
+        
+        self._prune_nodes(self._root)
     
 
     def _serialize_node(self, node: JMLNode, lines: List[str], depth: int = 0):
