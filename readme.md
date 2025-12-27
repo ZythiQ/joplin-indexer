@@ -11,8 +11,8 @@ This project uses a Joplin workspace as a small database. Minimally represented 
 
 * **JoplinClient** : REST client + port discovery + pagination.
 * **JoplinDAO** : Cached database-like operations over `notes` / `folders` / `tags`.
-* **JMLTree** : Parses and edits JML-tagged markdown into a `node` / `container` tree.
-* **JMLDOM** : Query builder over a JMLTree (SQL-styled ops).
+* **JMLDoc** : Parses and edits JML-tagged markdown into a `node` / `container` tree document.
+* **JMLDOM** : Query builder over a JMLDoc (SQL-styled ops).
 * **Data models** : `JNote`, `JFolder`, `JTag`, `JMLNode`.
 
 ---
@@ -101,7 +101,7 @@ dao.refresh_cache()  # force rebuild now
 
 ---
 
-## 3) JML Document (JMLTree)
+## 3) JML Document (JMLDoc)
 
 Joplin Markup Language is embedded in markdown using HTML-style comments with two constructs:
 
@@ -125,15 +125,15 @@ Some content...
 ### Parse / edit / serialize
 
 ```python
-from controllers.joplin_dom import JMLTree
+from controllers.joplin_dom import JMLDoc
 
-tree = JMLTree(markdown_text)
+doc = JMLDoc(markdown_text)
 
-cid = tree.create_container("root", name="stuff")
-nid = tree.create_node("# Part 1", cid, type="something", tag="it")
+cid = doc.create_container("root", name="stuff")
+nid = doc.create_node("Fire and Ice", cid, type="something", tag="it")
 
-tree.update_content(nid, "Updated content...")
-new_markdown_text = tree.serialize()
+doc.update_content(nid, "Updated content...")
+new_markdown_text = doc.serialize()
 ```
 
 (If you try to read / write content on a container, it raises an  `InvalidOperationError`.)
@@ -180,6 +180,6 @@ new_markdown_text = dom.get_document()
 
 * `JoplinAPIError`, `JoplinNotFoundError` (client / REST).
 * `InvalidOperationError` (e.g., treating a container like a node).
-* `JMLNodeNotFoundError` (JML tree / DOM node lookups).
+* `JMLNodeNotFoundError` (JML document / DOM node lookups).
 
 ---

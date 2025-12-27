@@ -6,7 +6,7 @@ import secrets
 import re
 
 
-class JMLTree:
+class JMLDoc:
     """
     Joplin Markup Language parser and document tree manager.
     """
@@ -58,7 +58,7 @@ class JMLTree:
 
     def _deserialize(self, markdown: str) -> None:
         """
-        Parse markdown to JMLTree.
+        Parse markdown to JMLDoc.
         """
         lines = markdown.split('\n')
         stack = [self._root]
@@ -139,7 +139,7 @@ class JMLTree:
 
     def serialize(self) -> str:
         """
-        Serialize JMLTree to markdown.
+        Serialize JMLDoc to markdown.
         """
         lines = []
         self._serialize_node(self._root, lines)
@@ -358,11 +358,11 @@ class JMLDOM:
         """
         Initialize an empty query builder.
         """
-        self._jml: Optional[JMLTree] = None
+        self._jml: Optional[JMLDoc] = None
         self._results: List[str] = []
 
 
-    def _get_jml(self) -> JMLTree:
+    def _get_jml(self) -> JMLDoc:
         """
         Returns a JML instance.
         """
@@ -383,7 +383,7 @@ class JMLDOM:
         """
         Load a markdown document for querying and editing.
         """
-        self._jml = JMLTree(markdown)
+        self._jml = JMLDoc(markdown)
         self._reset()
         return self
 
