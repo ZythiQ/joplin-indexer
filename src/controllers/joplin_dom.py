@@ -11,23 +11,22 @@ class JMLDoc:
     Joplin Markup Language parser and document tree manager.
     """
 
-    _TAG_NODE = 'node'
-    _TAG_IMPTAINER = 'container'
+    _TO_TAG = {JMLNode.Type.NODE: '@n', JMLNode.Type.CONTAINER: '@c'}
 
     _ATTRIBUTE_RE = re.compile(r'(\w+)="([^"]*)"')
 
-    _NODE_RE = re.compile(rf'<!-- {_TAG_NODE} id="([^"]+)"(.*?)-->')
-    _NODE_END_RE = re.compile(rf'<!-- /{_TAG_NODE} -->')
+    _NODE_RE = re.compile(rf'<!-- {_TO_TAG[JMLNode.Type.NODE]} id="([^"]+)"(.*?)-->')
+    _NODE_END_RE = re.compile(rf'<!-- /{_TO_TAG[JMLNode.Type.NODE]} -->')
 
-    _IMPTAINER_RE = re.compile(rf'<!-- {_TAG_IMPTAINER} id="([^"]+)"(.*?)-->')
-    _IMPTAINER_END_RE = re.compile(rf'<!-- /{_TAG_IMPTAINER} -->')
+    _CONTAINER_RE = re.compile(rf'<!-- {_TO_TAG[JMLNode.Type.CONTAINER]} id="([^"]+)"(.*?)-->')
+    _CONTAINER_END_RE = re.compile(rf'<!-- /{_TO_TAG[JMLNode.Type.CONTAINER]} -->')
 
 
     def __init__(self, markdown: str):
         """
         Initialize tree by parsing JML markdown.
         """
-        self._root = JMLNode(id='root', type='container', content='', attributes={'type': 'root'})
+        self._root = JMLNode(id='root', type=JMLNode.Type.CONTAINER, content='', attributes={'type': 'root'})
         self._idx: Dict[str, JMLNode] = {'root': self._root}
         if markdown: self._deserialize(markdown)
 
@@ -57,7 +56,7 @@ class JMLDoc:
         
         content_str = '\n'.join(content).strip()
         if not self._is_empty(content_str):
-            node = JMLNode(id := self._create_id('n'), type='node', content=content_str, attributes={})
+            node = JMLNode(id := self._create_id('n'), type=JMLNode.Type.NODE, content=content_str, attributes={})
             parent.children.append(node)
 
             node.parent = parent
@@ -83,7 +82,7 @@ class JMLDoc:
         if node.id == 'root':
             return False
         
-        if node.type == 'node':
+        if node.type == JMLNode.Type.NODE:
             return self._is_empty(node.content)
         
         else:
@@ -119,7 +118,7 @@ class JMLDoc:
         
         # Find root:
         for i, line in enumerate(lines):
-            if match := self._IMPTAINER_RE.match(line):
+            if match := self._CONTAINER_RE.match(line):
                 if match.group(1) == 'root':
                     seen_root = True
                     root_start = i
@@ -130,7 +129,7 @@ class JMLDoc:
         
         # Container opening:
         for i, line in enumerate(lines):
-            if match := self._IMPTAINER_RE.match(line):
+            if match := self._CONTAINER_RE.match(line):
                 cid = match.group(1)
                 attrs_str = match.group(2).strip()
                 attrs = self._deserialize_attributes(attrs_str)
@@ -144,7 +143,7 @@ class JMLDoc:
                     in_root = True
 
                 else:
-                    container = JMLNode(id=cid, type=self._TAG_IMPTAINER, content='', attributes=attrs)
+                    container = JMLNode(id=cid, type=JMLNode.Type.CONTAINER, content='', attributes=attrs)
                     stack[-1].children.append(container)
                     container.parent = stack[-1]
                     self._idx[cid] = container
@@ -161,7 +160,7 @@ class JMLDoc:
                 cid = match.group(1)
                 node_md = []
 
-                node = JMLNode(id=cid, type=self._TAG_NODE, content='', attributes=attrs)
+                node = JMLNode(id=cid, type=JMLNode.Type.NODE, content='', attributes=attrs)
                 stack[-1].children.append(node)
                 node.parent = stack[-1]
 
@@ -177,7 +176,7 @@ class JMLDoc:
                 continue
 
             # Container closing:
-            if self._IMPTAINER_END_RE.match(line):
+            if self._CONTAINER_END_RE.match(line):
                 if loose_md:
                     self._wrap_content(stack[-1], loose_md)
                     loose_md = []
@@ -212,24 +211,26 @@ class JMLDoc:
         """
         Recursively serialize a node.
         """
+        tag = self._TO_TAG[node.type]
+        
         if node.id == 'root':
             attrs = ' '.join(f'{k}="{v}"' for k, v in node.attributes.items())
-            lines.append(f'<!-- {self._TAG_IMPTAINER} id="{node.id}" {attrs} -->')
+            lines.append(f'<!-- {tag} id="{node.id}" {attrs} -->')
 
-        elif node.type == 'container':
+        elif node.type == JMLNode.Type.CONTAINER:
             attrs = ' '.join(f'{k}="{v}"' for k, v in node.attributes.items())
-            lines.append(f'<!-- {self._TAG_IMPTAINER} id="{node.id}" {attrs} -->')
+            lines.append(f'<!-- {tag} id="{node.id}" {attrs} -->')
 
         else:
             attrs = ' '.join(f'{k}="{v}"' for k, v in node.attributes.items())
-            lines.append(f'<!-- {self._TAG_NODE} id="{node.id}" {attrs} -->')
+            lines.append(f'<!-- {tag} id="{node.id}" {attrs} -->')
             lines.append(node.content)
-            lines.append(f'<!-- /{self._TAG_NODE} -->')
+            lines.append(f'<!-- /{tag} -->')
             return
 
         for child in node.children:
             self._serialize_node(child, lines, depth + 1)
-        lines.append(f'<!-- /{self._TAG_IMPTAINER} -->')
+        lines.append(f'<!-- /{tag} -->')
 
 
     def serialize(self) -> str:
@@ -245,7 +246,7 @@ class JMLDoc:
         """
         Create a node container and return the generated ID.
         """
-        container = JMLNode(id := self._create_id('c'), type='container', content='', attributes=attributes)
+        container = JMLNode(id := self._create_id('c'), type=JMLNode.Type.CONTAINER, content='', attributes=attributes)
         parent = self._idx[parent_id]
 
         parent.children.append(container)
@@ -258,7 +259,7 @@ class JMLDoc:
         """
         Create a node with content and return the generated ID.
         """
-        node = JMLNode(id := self._create_id('n'), type='node', content=content, attributes=attributes)
+        node = JMLNode(id := self._create_id('n'), type=JMLNode.Type.NODE, content=content, attributes=attributes)
         parent = self._idx[parent_id]
 
         parent.children.append(node)
@@ -274,7 +275,7 @@ class JMLDoc:
         if not (node := self._idx.get(node_id)):
             raise JMLNodeNotFoundError(f"Node {node_id} not found")
         
-        if node.type != 'node':
+        if node.type != JMLNode.Type.NODE:
             raise InvalidOperationError(f"{node_id} is a container")
         return node.content
 
@@ -317,11 +318,11 @@ class JMLDoc:
 
     def read_type(self, node_id: str) -> str:
         """
-        Read node type.
+        Read node type as string value.
         """
         if not (node := self._idx.get(node_id)):
             raise JMLNodeNotFoundError(f"Node {node_id} not found")
-        return node.type
+        return node.type.value
 
 
     def update_content(self, node_id: str, content: str) -> None:
@@ -331,7 +332,7 @@ class JMLDoc:
         if not (node := self._idx.get(node_id)):
             raise JMLNodeNotFoundError(f"Node {node_id} not found")
         
-        if node.type != 'node':
+        if node.type != JMLNode.Type.NODE:
             raise InvalidOperationError(f"{node_id} is a container")
         node.content = content
 
@@ -391,7 +392,7 @@ class JMLDoc:
         if not parent:
             raise JMLNodeNotFoundError(f"Parent {new_parent_id} not found")
         
-        if parent.type != 'container':
+        if parent.type != JMLNode.Type.CONTAINER:
             raise InvalidOperationError(f"{new_parent_id} is not a container")
 
         if node.parent:
@@ -430,7 +431,7 @@ class JMLDoc:
 
         for child in node.children:
             descendants.append(child.id)
-            if child.type == 'container':
+            if child.type == JMLNode.Type.CONTAINER:
                 descendants.extend(self.get_all_descendants(child.id))
         return descendants
 
@@ -460,11 +461,11 @@ class JMLDoc:
             else:
                 content = ""
                 connector = "└── " if is_last else "├── "
-                attrs = f" {node.attributes}" if node.attributes else ""
+                attrs = f" {IMPT}{node.attributes}{RESET}" if node.attributes else ""
                 
-                if node.type == "container":
+                if node.type == JMLNode.Type.CONTAINER:
                     node_type = f"{IMPT}[C]{RESET}"
-                    node_id = f"{IMPT}{node.id}{RESET}"
+                    node_id = f"{node.id}"
                     attrs = f"{attrs}" if attrs else ""
                     lines.append(f"{prefix}{connector}{node_type} {node_id}{attrs}")
 
@@ -486,7 +487,7 @@ class JMLDoc:
                 for i, child in enumerate(node.children):
                     _build_tree(child, new_prefix, i == len(node.children) - 1)
                     
-                    if child.type == "container" and i < len(node.children) - 1:
+                    if child.type == JMLNode.Type.CONTAINER and i < len(node.children) - 1:
                         lines.append(new_prefix + "│   " + "\u200b")
         
         _build_tree(self._root)

@@ -1,5 +1,6 @@
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
+from enum import Enum
 
 
 @dataclass
@@ -7,9 +8,13 @@ class JMLNode:
     """
     Joplin Markup Language Node.
     """
+    class Type(Enum):
+        NODE = 'node'
+        CONTAINER = 'container'
+    
     id: str
-    type: str
     content: str
+    type: 'JMLNode.Type'
     attributes: Dict[str, Any] = field(default_factory=dict)
     children: List['JMLNode'] = field(default_factory=list)
     parent: Optional['JMLNode'] = None
