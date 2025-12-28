@@ -111,7 +111,7 @@ print(repr(dao))
 #### Example Output
 
 ```powershell
-/root
+root/
 └── [F] eac4bc4e "Library" [2024-12-19 14:50]
     ├── [F] 5b075ad1 "Melville" [2025-01-08 01:34]
     │   └── [F] 0ba07e44 "Moby Dick" [2025-01-08 01:34]
