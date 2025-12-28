@@ -171,7 +171,7 @@ from controllers.joplin_dom import JMLDoc
 doc = JMLDoc(markdown_text)
 
 cid = doc.create_container("root", name="stuff")
-nid = doc.create_node("Fire and Ice", cid, type="something", tag="it")
+nid = doc.create_node("Fire and Ice", cid, type="summary", tag="it")
 
 doc.update_content(nid, "Updated content...")
 new_markdown_text = doc.serialize()
@@ -193,7 +193,7 @@ from controllers.joplin_dom import JMLDOM
 dom = JMLDOM().set_document(markdown)
 
 parts = (
-  dom.where(type="something")
+  dom.where(type="summary")
      .where_in("tag", ["it", "bit", "git"])
      .get_ids()
 )
@@ -204,7 +204,7 @@ parts = (
 ```python
 dom.set_document(markdown_text)
 
-dom.where(type="something").bulk_set_attributes(series="Fire and Ice")
+dom.where(type="draft").bulk_set_attributes(series="Fire and Ice")
 
 deleted = dom.where(type="draft").bulk_delete()
 new_markdown_text = dom.get_document()
