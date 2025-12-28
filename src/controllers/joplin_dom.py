@@ -450,29 +450,29 @@ class JMLDoc:
         """
         lines = []
 
-        IMPT = '\x1b[36m'
-        INFO = '\033[90m'
-        RESET = '\033[0m'
+        IMPT = "\x1b[36m"
+        INFO = "\033[90m"
+        RESET = "\033[0m"
         
         def _build_tree(node: JMLNode, prefix: str = "", is_last: bool = True):
-            if node.id == 'root': 
+            if node.id == "root": 
                 lines.append(f"{IMPT}root/{RESET}")
             else:
                 content = ""
                 connector = "└── " if is_last else "├── "
                 attrs = f" {node.attributes}" if node.attributes else ""
                 
-                if node.type == 'container':
+                if node.type == "container":
                     node_type = f"{IMPT}[C]{RESET}"
                     node_id = f"{IMPT}{node.id}{RESET}"
-                    attrs = f"{IMPT}{attrs}{RESET}" if attrs else ""
+                    attrs = f"{attrs}" if attrs else ""
                     lines.append(f"{prefix}{connector}{node_type} {node_id}{attrs}")
 
                 else:
                     node_type = "(N)"
                     
                     if node.content:
-                        snippet = node.content[:20].replace('\n', ' ')
+                        snippet = node.content[:20].replace("\n", " ")
                         if len(node.content) > 20: 
                             snippet += "..."
                         content = f" {INFO}[{len(node.content)} chars: \"{snippet}\"]{RESET}"
@@ -480,13 +480,13 @@ class JMLDoc:
                     lines.append(f"{prefix}{connector}{node_type} {node.id}{attrs}{content}")
             
             if node.children:
-                if node.id == 'root': new_prefix = ""
+                if node.id == "root": new_prefix = ""
                 else: new_prefix = prefix + ("    " if is_last else "│   ")
                 
                 for i, child in enumerate(node.children):
                     _build_tree(child, new_prefix, i == len(node.children) - 1)
                     
-                    if child.type == 'container' and i < len(node.children) - 1:
+                    if child.type == "container" and i < len(node.children) - 1:
                         lines.append(new_prefix + "│   " + "\u200b")
         
         _build_tree(self._root)

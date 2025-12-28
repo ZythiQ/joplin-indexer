@@ -99,6 +99,46 @@ dao.untag_note(note.id, tag.id)
 dao.refresh_cache()  # force rebuild now
 ```
 
+### Render the DAO
+
+- *Note: Joplin's API separates Notes and Tags and has a long warmup period (2 seconds) so this function is slow. Use it for testing if at all.*
+
+```python
+dao = JoplinDAO(token="YOUR_JOPLIN_TOKEN")
+print(repr(dao))
+```
+
+#### Example Output
+
+```powershell
+/root
+└── [F] eac4bc4e "Library" [2024-12-19 14:50]
+    ├── [F] 5b075ad1 "Melville" [2025-01-08 01:34]
+    │   └── [F] 0ba07e44 "Moby Dick" [2025-01-08 01:34]
+    │       ├── (N) f40fb860 "Moby Dick: Part 1" 'melville (moby dick)' [2025-01-08 03:16]
+    │       ├── (N) 46fdd513 "Moby Dick: Part 2" 'melville (moby dick)' [2025-01-08 03:16]
+    │       ├── (N) 3c9c95de "Moby Dick: Part 3" 'melville (moby dick)' [2025-01-08 03:16]
+    │       └── (N) 9bc77daf "Moby Dick: Part 4" 'melville (moby dick)' [2025-01-08 03:16]
+    │   
+    ├── [F] 0216c7e1 "Austen" [2025-01-02 15:43]
+    │   ├── [F] 849d9531 "Pride and Prejudice" [2025-01-02 20:06]
+    │   │   ├── (N) b12bebf5 "Pride and Prejudice: Part 1" 'austen (pride and prejudice)' [2025-01-02 20:06]
+    │   │   ├── (N) a690f8ea "Pride and Prejudice: Part 2" 'austen (pride and prejudice)' [2025-01-02 20:18]
+    │   │   └── (N) 7659ad5f "Pride and Prejudice: Part 3" 'austen (pride and prejudice)' [2025-01-02 20:19]
+    │   │   
+    │   └── [F] 8f5ddc25 "Sense and Sensibility" [2025-01-02 23:25]
+    │       ├── (N) 90f4560d "Sense and Sensibility: Part 1" 'austen (sense and sensibility)' [2025-01-02 23:26]
+    │       ├── (N) 436bc16f "Sense and Sensibility: Part 2" 'austen (sense and sensibility)' [2025-01-02 23:27]
+    │       └── (N) 2656b12b "Sense and Sensibility: Part 3" 'austen (sense and sensibility)' [2025-01-02 23:27]
+    │   
+    └── [F] 7a8981f5 "Orwell" [2025-01-07 17:23]
+        └── [F] 0757ec12 "1984" [2025-01-07 17:25]
+            ├── (N) 5b291921 "1984: Part 1" 'orwell (1984)' [2025-01-07 17:25]
+            ├── (N) 67d60edd "1984: Part 2" 'orwell (1984)' [2025-01-07 17:25]
+            ├── (N) d8ab7f45 "1984: Part 3" 'orwell (1984)' [2025-01-07 17:25]
+            └── (N) b88f4609 "1984: Part 4" 'orwell (1984)' [2025-01-07 17:26]
+```
+
 ---
 
 ## 3) JML Document (JMLDoc)

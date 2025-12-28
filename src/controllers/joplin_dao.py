@@ -2,9 +2,11 @@ from models.joplin_data import JNote, JFolder, JTag
 from controllers.joplin_client import JoplinClient
 
 from typing import List, Optional, Dict, Set, Literal, Union, Callable, cast
+from datetime import datetime
 from functools import wraps
 
 
+from datetime import datetime
 class JoplinDAO:
     """
     Joplin data access object with lazy caching and minimal code footprint.
@@ -40,9 +42,9 @@ class JoplinDAO:
         self._tags: Dict[str, JTag] = {}
                
         self._config = {
-            'note': (self._notes, JNote, 'notes', ['id', 'title', 'parent_id', 'updated_time', 'is_todo']),
-            'folder': (self._folders, JFolder, 'folders', ['id', 'title', 'parent_id']),
-            'tag': (self._tags, JTag, 'tags', ['id', 'title'])
+            'note': (self._notes, JNote, 'notes', ['id', 'title', 'parent_id', 'created_time', 'updated_time', 'is_todo']),
+            'folder': (self._folders, JFolder, 'folders', ['id', 'title', 'parent_id', 'created_time']),
+            'tag': (self._tags, JTag, 'tags', ['id', 'title', 'created_time'])
         }
 
 
@@ -96,11 +98,17 @@ class JoplinDAO:
 
     def _ensure_notes_loaded(self, folder_id: str):
         """
-        Lazy-load all notes for a folder.
+        Lazy-load all notes for a folder. If folder_id = "root", get all notes.
         """
-        scope = f'folder:{folder_id}'
+        if folder_id == "root":
+            if "notes" not in self._loaded:
+                self._bulk_fetch("note")
+                self._loaded.add("notes")
+            return
+
+        scope = f"folder:{folder_id}"
         if scope not in self._loaded:
-            self._bulk_fetch('note', f'folders/{folder_id}/notes')
+            self._bulk_fetch("note", f"folders/{folder_id}/notes")
             self._loaded.add(scope)
 
 
@@ -231,7 +239,7 @@ class JoplinDAO:
 
     def delete_folder(self, folder_id: str):
         """
-        Delete a folder and all its notes.
+        Delete a folder and all i_ts notes.
         """
         self._delete('folder', folder_id)
 
@@ -390,3 +398,64 @@ class JoplinDAO:
         if note_id in self._notes:
             note = self._notes[note_id]
             note.tags = [t for t in note.tags if t.id != tag_id]
+
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation.
+        """
+        IMPT =  "\x1b[36m"
+        INFO =  "\033[90m"
+        RESET = "\033[0m"
+
+        def _ts(ms):
+            return datetime.fromtimestamp(ms / 1000).strftime("%Y-%m-%d %H:%M")
+
+        def _line(kind, x):
+            head, tgs, tags = f"{IMPT}[F]{RESET}" if kind == "f" else "(N)", None, ""
+
+            if kind != "f":
+                tgs = x.tags if getattr(x, "tags", None) else self.get_note_tags(x.id)
+
+            if tgs: tags = " " + ", ".join(f"{IMPT}'{t.title}'{RESET}" for t in tgs)
+
+            return f'{head} {x.id[-8:]} "{x.title}"{tags} {INFO}[{_ts(x.created_time)}]{RESET}'.rstrip()
+
+        def _build_tree(pid: str, prefix: str = ""):
+            fs = kids.get(pid, {}).get("f", [])
+            ns = kids.get(pid, {}).get("n", [])
+            it = [("f", x) for x in fs] + [("n", x) for x in ns]
+
+            for i, (k, x) in enumerate(it):
+                last = i == len(it) - 1
+                connector = "└── " if last else "├── "
+                child_prefix = prefix + ("    " if last else "│   ")
+
+                out.append(f"{prefix}{connector}{_line(k, x)}")
+
+                if k == "f":
+                    before = len(out)
+                    _build_tree(x.id, child_prefix)
+
+                    if (not last) and (len(out) > before):
+                        spacer = prefix + "│   "
+                        if out[-1] != spacer:
+                            out.append(spacer)
+
+        folders = self.list_folders()
+        notes = self.list_notes()
+        out = ["/root"]
+        kids = {}
+
+        for f in folders:
+            kids.setdefault(f.parent_id or "root", {"f": [], "n": []})["f"].append(f)
+            
+        for n in notes:
+            kids.setdefault(n.parent_id or "root", {"f": [], "n": []})["n"].append(n)
+
+        for v in kids.values():
+            v["f"].sort(key=lambda x: x.title.lower())
+            v["n"].sort(key=lambda x: x.title.lower())
+
+        _build_tree("root")
+        return "\n".join(out)
