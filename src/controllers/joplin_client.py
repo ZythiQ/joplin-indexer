@@ -1,4 +1,4 @@
-from models.joplin_errors import JoplinAPIError, JoplinNotFoundError
+from models.errors import JoplinAPIError, JoplinNotFoundError
 
 from typing import Dict, List, Optional, Any
 import requests

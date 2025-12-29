@@ -5,5 +5,5 @@ class InvalidOperationError(JoplinError): pass
 class JoplinAPIError(JoplinError): pass
 class JoplinNotFoundError(JoplinError): pass
 
-class JMLError(JoplinError): pass
-class JMLNodeNotFoundError(JMLError): pass
+class MMLError(JoplinError): pass
+class MMLNodeNotFoundError(MMLError): pass

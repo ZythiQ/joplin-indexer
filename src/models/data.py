@@ -4,20 +4,21 @@ from enum import Enum
 
 
 @dataclass
-class JMLNode:
+class MMLNode:
     """
-    Joplin Markup Language Node.
+    Markdown Markup Language Node.
     """
     class Type(Enum):
         NODE = 'node'
         CONTAINER = 'container'
+        FRAGMENT = 'fragment'
     
     id: str
     content: str
-    type: 'JMLNode.Type'
+    type: 'MMLNode.Type'
     attributes: Dict[str, Any] = field(default_factory=dict)
-    children: List['JMLNode'] = field(default_factory=list)
-    parent: Optional['JMLNode'] = None
+    children: List['MMLNode'] = field(default_factory=list)
+    parent: Optional['MMLNode'] = None
 
 
 @dataclass

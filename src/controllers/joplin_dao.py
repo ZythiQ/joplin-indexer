@@ -1,4 +1,4 @@
-from models.joplin_data import JNote, JFolder, JTag
+from models.data import JNote, JFolder, JTag
 from controllers.joplin_client import JoplinClient
 
 from typing import List, Optional, Dict, Set, Literal, Union, Callable, cast
