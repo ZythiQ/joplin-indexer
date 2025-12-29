@@ -1,6 +1,6 @@
 # Joplin Indexing Tools
 
-This project uses a Joplin workspace as a small database. Minimally represented `notes` / `folders` / `tags` are controlled via a DAO and API client pair and their markdown contents are structured and navigatable using MML, a comment-based markup language, which can be safely queried with a DOM.
+This project uses a Joplin workspace as a small database; [JDX Format Specification](docs/jdx_format_specification.md) describes this higher level use in detail. Though at its core, minimally represented `notes` / `folders` / `tags` are controlled via a DAO and API client pair and their markdown contents are structured and controlled using MML, a comment-based markup language, which can be safely queried with a DOM.
 
 ## Requirements
 
@@ -11,28 +11,15 @@ This project uses a Joplin workspace as a small database. Minimally represented 
 
 * **JoplinClient** : REST client + port discovery + pagination.
 * **JoplinDAO** : Cached database-like operations over `notes` / `folders` / `tags`.
-* **MMLDoc** : Parses and edits MML-tagged markdown into a `node` / `container` / `fragment` tree document.
+* **MMLDoc** : Parses and edits MML documents into a `node` / `container` / `fragment` tree.
 * **MMLDOM** : Query builder over a MMLDoc (SQL-styled ops).
 * **Data models** : `JNote`, `JFolder`, `JTag`, `MMLNode`.
 
 ---
 
-## JDX Format Specification
-
-This project uses the **JDX (Joplin inDeXing) format** for structuring notes and a table of contents. JDX is built on top of MML (Markdown Markup Language) and defines specific conventions for organizing writing content.
-
-For the complete format specification, including:
-
-- Literature note structure (shorts, series, anthologies)
-- Table of contents hierarchy and organization
-
-See: **[JDX Format Specification](/docs/jdx_format_specification.md)**
-
----
-
 # Usage Guide
 
-## 1) API Client (JoplinClient)
+## 1. API Client (JoplinClient)
 
 ### Create a client
 
@@ -43,14 +30,6 @@ See: **[JDX Format Specification](/docs/jdx_format_specification.md)**
 from controllers.joplin_client import JoplinClient
 
 client = JoplinClient(token="YOUR_JOPLIN_TOKEN")  # auto-discovers base_url
-# or:
-client = JoplinClient(token="YOUR_JOPLIN_TOKEN", base_url="http://localhost:41184")
-```
-
-### Reset port discovery
-
-```python
-JoplinClient.reset_discovery()
 ```
 
 ### Basic requests
@@ -62,11 +41,13 @@ updated = client.put("notes/NOTE_ID", {"title": "Y"})
 client.delete("notes/NOTE_ID")
 ```
 
+**→ See [Joplin API Reference](docs/joplin_api_reference.md) for complete client documentation**
+
 ---
 
-## 2) DAO (JoplinDAO)
+## 2. DAO (JoplinDAO)
 
-`JoplinDAO` builds and refreshes a lightweight cache (`notes` / `folders` / `tags` + indexes) with a TTL (default 5 minutes).
+`JoplinDAO` builds and refreshes a lightweight cache (`notes` / `folders` / `tags` + indexes) and automatic updates.
 
 ### Create DAO
 
@@ -102,24 +83,16 @@ moved = dao.move_notes([note.id], target_folder_id="TARGET_FOLDER")
 tag = dao.create_tag("fantasy")
 dao.tag_note(note.id, tag.id)
 
-notes_with_tag = dao.get_notes_with_tag(tag.id)
+notes_with_tag = dao.list_notes(tag_id=tag.id)
 dao.untag_note(note.id, tag.id)
-```
-
-### Cache control
-
-```python
-dao.refresh_cache()  # force rebuild now
 ```
 
 ### Render the DAO
 
 - *Note: Joplin's API separates Notes and Tags and has a long warmup period (2 seconds) so this function is slow.*
-  - *Use it for testing if at all.*
 
 ```python
-dao = JoplinDAO(token="YOUR_JOPLIN_TOKEN")
-print(repr(dao))
+print(dao)
 ```
 
 #### Example Output
@@ -153,9 +126,11 @@ root/
             └── (N) b88f4609 "1984: Part 4" 'orwell (1984)' [2025-01-07 17:26]
 ```
 
+**→ See [Joplin API Reference](docs/joplin_api_reference.md) for complete DAO documentation**
+
 ---
 
-## 3) MML Document (MMLDoc)
+## 3. MML Document (MMLDoc)
 
 Markdown Markup Language is embedded in markdown using HTML comments with three constructs:
 
@@ -224,9 +199,11 @@ fragments = doc.get_fragments(nid, "author")  # {author: ["Updated Jane", "Updat
 content = doc.read_content(nid) # Some text <!-- %author -->Updated Jane<!-- /%author --> more text <!-- %author -->Updated John<!-- /%author -->
 ```
 
+**→ See [MML API Reference](docs/mml_api_reference.md) for complete MMLDoc documentation**
+
 ---
 
-## 4) MML Document Object Manager (MMLDOM)
+## 4. MML Document Object Manager (MMLDOM)
 
 `MMLDOM` is a query-builder wrapper around a MML document: call `set_document()`, filter with `where*()`, then bulk `edit` / `delete` / `move`, and finally `get_document()` to serialize.
 
@@ -250,23 +227,10 @@ parts = (
 * Filter by node type (`where_type`), e.g. `node` vs `container`.
 * Filter by fragment presence (`where_has_fragment`).
 
-### Bulk operations
-
-```python
-dom.set_document(markdown_text)
-
-dom.where(type="draft").bulk_set_attributes(series="Fire and Ice")
-
-deleted = dom.where(type="draft").bulk_delete()
-new_markdown_text = dom.get_document()
-```
-
 ### Render the tree after deserializing
 
 ```python
-dom = MMLDOM()
-dom.set_document(markdown)
-print(repr(dom))
+print(dom)
 ```
 
 #### Example Output
@@ -313,9 +277,11 @@ root/
         └── (N) n_8860a513 {'type': 'summary', 'author': 'Hasmov', 'category': 'series'} [173 chars: "#### **Ash Choir** \..."]
 ```
 
+**→ See [MML API Reference](docs/mml_api_reference.md) for complete MMLDOM documentation**
+
 ---
 
-## Errors (quick reference)
+## 5. Errors (quick reference)
 
 * `JoplinAPIError`, `JoplinNotFoundError` (client / REST).
 * `InvalidOperationError` (e.g., treating a container like a node).
