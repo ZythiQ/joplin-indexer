@@ -17,6 +17,19 @@ This project uses a Joplin workspace as a small database. Minimally represented 
 
 ---
 
+## JDX Format Specification
+
+This project uses the **JDX (Joplin inDeXing) format** for structuring notes and a table of contents. JDX is built on top of MML (Markdown Markup Language) and defines specific conventions for organizing writing content.
+
+For the complete format specification, including:
+
+- Literature note structure (shorts, series, anthologies)
+- Table of contents hierarchy and organization
+
+See: **[JDX Format Specification](/docs/jdx_format_specification.md)**
+
+---
+
 # Usage Guide
 
 ## 1) API Client (JoplinClient)
