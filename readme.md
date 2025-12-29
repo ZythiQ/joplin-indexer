@@ -166,6 +166,8 @@ Some content with <!-- %tag1 -->embedded fragment<!-- /%tag1 --> text.
 
 ### Parse / edit / serialize
 
+If you try to read / write content on a container, it raises an `InvalidOperationError`.
+
 ```python
 from controllers.joplin_dom import MMLDoc
 
@@ -178,14 +180,9 @@ doc.update_content(nid, "Updated content...")
 new_markdown_text = doc.serialize()
 ```
 
-(If you try to read / write content on a container, it raises an `InvalidOperationError`.)
-
 ### Working with Fragments
 
 Fragments allow you to embed and extract reusable snippets within node content. They are parsed automatically during deserialization and stored as child nodes of type `MMLNode.Type.FRAGMENT`.
-
-**Fragment behavior:**
-
 - Occurrences of the same fragment id in a parent aggregate as an immutable-length tuple.
 - A node's fragments can then be selected by their shared id + index and mutated in-place.
 
@@ -233,6 +230,12 @@ parts = (
 )
 ```
 
+### Structural filters
+
+* Restrict to descendants of a container (`where_container`).
+* Filter by node type (`where_type`), e.g. `node` vs `container`.
+* Filter by fragment presence (`where_has_fragment`).
+
 ### Bulk operations
 
 ```python
@@ -243,12 +246,6 @@ dom.where(type="draft").bulk_set_attributes(series="Fire and Ice")
 deleted = dom.where(type="draft").bulk_delete()
 new_markdown_text = dom.get_document()
 ```
-
-### Structural filters
-
-* Restrict to descendants of a container (`where_container`).
-* Filter by node type (`where_type`), e.g. `node` vs `container`.
-* Filter by fragment presence (`where_has_fragment`).
 
 ### Render the tree after deserializing
 
@@ -267,13 +264,23 @@ root/
 │   ├── [C] c_66ff3471 {'type': 'shorts', 'author': 'John'}
 │   │   ├── (N) n_77050bff [16 chars: "--- ### [Shorts]"]
 │   │   ├── (N) n_3eb8ad5e {'type': 'summary', 'author': 'John', 'category': 'short'} [204 chars: "#### **Deep Sea Post..."]
+│   │   │   ├── <F> genre ['Sea', 'Mystery'] [len: 2]
+│   │   │   └── <F> desc ['A salvage diver find...'] [len: 1]
 │   │   ├── (N) n_54e94cef {'type': 'summary', 'author': 'John', 'category': 'short'} [188 chars: "#### **Borrowed Grav..."]
+│   │   │   ├── <F> genre ['Sci-Fi'] [len: 1]
+│   │   │   └── <F> desc ['A thief steals gravi...'] [len: 1]
 │   │   └── (N) n_5fa1c395 {'type': 'summary', 'author': 'John', 'category': 'short'} [177 chars: "#### **The Quiet Sta..."]
+│   │       ├── <F> genre ['Horror'] [len: 1]
+│   │       └── <F> desc ['A postal clerk finds...'] [len: 1]
 │   │   
 │   └── [C] c_032fb238 {'type': 'series', 'author': 'John'}
 │       ├── (N) n_10b88dee [16 chars: "--- ### [Series]"]
 │       ├── (N) n_b9664b68 {'type': 'summary', 'author': 'John', 'category': 'series'} [218 chars: "#### **Lantern Distr..."]
+│       │   ├── <F> genre ['Mystery', 'Super Natural'] [len: 2]
+│       │   └── <F> desc ['A courier walks a ci...'] [len: 1]
 │       └── (N) n_fda63c3a {'type': 'summary', 'author': 'John', 'category': 'series'} [179 chars: "#### **Midnight Tran..."]
+│           ├── <F> genre ['Super Natural'] [len: 1]
+│           └── <F> desc ['A conductor runs the...'] [len: 1]
 │   
 └── [C] c_384a733a {'author': 'Hasmov'}
     ├── (N) n_6bac7e3b [13 chars: "--- ## [Hasmov]"]
