@@ -1,6 +1,6 @@
 # Joplin Indexing Tools
 
-This project uses a Joplin workspace as a small database. Minimally represented `notes` / `folders` / `tags` are controlled via a DAO and API client pair and their markdown contents are structured and navigatable using JML, a comment-based markup language, which can be safely queried with a DOM.
+This project uses a Joplin workspace as a small database. Minimally represented `notes` / `folders` / `tags` are controlled via a DAO and API client pair and their markdown contents are structured and navigatable using MML, a comment-based markup language, which can be safely queried with a DOM.
 
 ## Requirements
 
@@ -11,9 +11,9 @@ This project uses a Joplin workspace as a small database. Minimally represented 
 
 * **JoplinClient** : REST client + port discovery + pagination.
 * **JoplinDAO** : Cached database-like operations over `notes` / `folders` / `tags`.
-* **JMLDoc** : Parses and edits JML-tagged markdown into a `node` / `container` tree document.
-* **JMLDOM** : Query builder over a JMLDoc (SQL-styled ops).
-* **Data models** : `JNote`, `JFolder`, `JTag`, `JMLNode`.
+* **MMLDoc** : Parses and edits MML-tagged markdown into a `node` / `container` / `fragment` tree document.
+* **MMLDOM** : Query builder over a MMLDoc (SQL-styled ops).
+* **Data models** : `JNote`, `JFolder`, `JTag`, `MMLNode`.
 
 ---
 
@@ -142,22 +142,23 @@ root/
 
 ---
 
-## 3) JML Document (JMLDoc)
+## 3) MML Document (MMLDoc)
 
-Joplin Markup Language is embedded in markdown using HTML-style comments with two constructs:
+Markdown Markup Language is embedded in markdown using HTML comments with three constructs:
 
-* containers: `<!-- @c id="..." ... --> ... <!-- /@c -->`
-* nodes: `<!-- @n id="..." ... --> ... <!-- /@n -->`
+* **containers**: `<!-- @c id="..." ... --> ... <!-- /@c -->`
+* **nodes**: `<!-- @n id="..." ... --> ... <!-- /@n -->`
+* **fragments**: `<!-- %id--> ... <!-- /%id -->`
 
-Attributes are parsed from `key="value"` pairs. Malformed JML will be autofixed during deserialization. This will remove empty nodes, wrap loose markdown content, and move all nodes into a root container.
+Attributes are parsed from `key="value"` pairs. Malformed MML will be autofixed during deserialization. This will remove empty nodes, wrap loose markdown content, and move all nodes into a root container.
 
-### Example JML document
+### Example MML document
 
 ```md
 <!-- @c id="root" type="toc" -->
 <!-- @c id="c_abc12345" name="stuff" -->
 <!-- @n id="n_def67890" type="something" tag="it" -->
-Some content...
+Some content with <!-- %tag1 -->embedded fragment<!-- /%tag1 --> text.
 <!-- /@n -->
 <!-- /@c -->
 <!-- /@c -->
@@ -166,9 +167,9 @@ Some content...
 ### Parse / edit / serialize
 
 ```python
-from controllers.joplin_dom import JMLDoc
+from controllers.joplin_dom import MMLDoc
 
-doc = JMLDoc(markdown_text)
+doc = MMLDoc(markdown_text)
 
 cid = doc.create_container("root", name="stuff")
 nid = doc.create_node("Fire and Ice", cid, type="summary", tag="it")
@@ -177,20 +178,53 @@ doc.update_content(nid, "Updated content...")
 new_markdown_text = doc.serialize()
 ```
 
-(If you try to read / write content on a container, it raises an  `InvalidOperationError`.)
+(If you try to read / write content on a container, it raises an `InvalidOperationError`.)
+
+### Working with Fragments
+
+Fragments allow you to embed and extract reusable snippets within node content. They are parsed automatically during deserialization and stored as child nodes of type `MMLNode.Type.FRAGMENT`.
+
+**Fragment behavior:**
+
+- Occurrences of the same fragment id in a parent aggregate as an immutable-length tuple.
+- A node's fragments can then be selected by their shared id + index and mutated in-place.
+
+```python
+from controllers.joplin_dom import MMLDoc
+
+# Create a node with fragments
+doc = MMLDoc("")
+nid = doc.create_node("Example", "root")
+
+# Generate fragment markdown
+fragment_md = doc.generate_fragment_md("author", "John Doe")
+doc.update_content(nid, f"Text with {fragment_md} embedded")
+
+# Or manually create the syntax (please don't...)
+content = f"Some text <!-- %author -->Jane Doe<!-- /%author --> more text {fragment_md}"
+doc.update_content(nid, content)
+
+# Update specific fragment occurrences
+doc.update_fragment(nid, "author", 1, "Updated John")
+doc.update_fragment(nid, "author", 0, "Updated Jane")
+
+# Read fragment occurrences
+fragments = doc.get_fragments(nid, "author")  # {author: ["Updated Jane", "Updated John"]}
+content = doc.read_content(nid) # Some text <!-- %author -->Updated Jane<!-- /%author --> more text <!-- %author -->Updated John<!-- /%author -->
+```
 
 ---
 
-## 4) JML Document Object Manager (JMLDOM)
+## 4) MML Document Object Manager (MMLDOM)
 
-`JMLDOM` is a query-builder wrapper around a JML document: call `set_document()`, filter with `where*()`, then bulk edit / delete / move, and finally `get_document()` to serialize.
+`MMLDOM` is a query-builder wrapper around a MML document: call `set_document()`, filter with `where*()`, then bulk `edit` / `delete` / `move`, and finally `get_document()` to serialize.
 
 ### Load and query
 
 ```python
-from controllers.joplin_dom import JMLDOM
+from controllers.joplin_dom import MMLDOM
 
-dom = JMLDOM().set_document(markdown)
+dom = MMLDOM().set_document(markdown)
 
 parts = (
   dom.where(type="summary")
@@ -214,11 +248,12 @@ new_markdown_text = dom.get_document()
 
 * Restrict to descendants of a container (`where_container`).
 * Filter by node type (`where_type`), e.g. `node` vs `container`.
+* Filter by fragment presence (`where_has_fragment`).
 
 ### Render the tree after deserializing
 
 ```python
-dom = JMLDOM()
+dom = MMLDOM()
 dom.set_document(markdown)
 print(repr(dom))
 ```
@@ -260,6 +295,6 @@ root/
 
 * `JoplinAPIError`, `JoplinNotFoundError` (client / REST).
 * `InvalidOperationError` (e.g., treating a container like a node).
-* `JMLNodeNotFoundError` (JML document / DOM node lookups).
+* `MMLNodeNotFoundError` (MML document / DOM node lookups).
 
 ---
