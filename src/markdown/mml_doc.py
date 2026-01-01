@@ -135,7 +135,7 @@ class MMLDoc:
                     id=identifier,
                     type=MMLNode.Type.FRAGMENT,
                     content='',
-                    attributes={str(i + 1): content for i, content in enumerate(contents)}
+                    attributes={str(i): content for i, content in enumerate(contents)}
                 )
                 
                 node.children.append(fragment)
