@@ -1,6 +1,23 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Literal, Union, Optional, Any
 from dataclasses import dataclass, field
 from enum import Enum
+
+
+@dataclass
+class Synopsis:
+    """
+    Story synopsis.
+    """
+    title: str
+    author: str
+    author_url: str = "#"
+
+    description: Union[str, List[str]] = ""
+    genres: List[str] = field(default_factory=list)
+    category: Literal['short', 'series', 'anthology'] = 'short'
+
+    parts: List[str] = field(default_factory=list)
+    relations: Optional[Dict[str, str]] = None
 
 
 @dataclass
@@ -16,6 +33,7 @@ class MMLNode:
     id: str
     content: str
     type: 'MMLNode.Type'
+
     attributes: Dict[str, Any] = field(default_factory=dict)
     children: List['MMLNode'] = field(default_factory=list)
     parent: Optional['MMLNode'] = None
@@ -27,16 +45,20 @@ class JNote:
     Joplin Note entity.
     """
     id: str = ''
-    title: str = ''
     body: str = ''
+    title: str = ''
     parent_id: str = ''
+
     is_todo: int = 0
     todo_completed: int = 0
+
     created_time: int = 0
     updated_time: int = 0
+
     author: str = ''
     source_url: str = ''
     markup_language: int = 1
+
     tags: List['JTag'] = field(default_factory=list)
 
 
@@ -48,8 +70,10 @@ class JFolder:
     id: str = ''
     title: str = ''
     parent_id: str = ''
+
     created_time: int = 0
     updated_time: int = 0
+
     icon: str = ''
 
 
@@ -60,5 +84,6 @@ class JTag:
     """
     id: str = ''
     title: str = ''
+
     created_time: int = 0
     updated_time: int = 0
